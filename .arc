@@ -1,17 +1,17 @@
 @app
 testcors
 
-@aws
-bucket cf-sam-deployments-east
-
 @http
+# simple requests
 get /
-get /foo
+get /api/foos
+post /api/foos
 
-# register the macro
+# complex requests
+put /api/foos/:fooID
+patch /api/foos/:fooID
+delete /api/foos/:fooID
+
 @macros
 cors
 
-# custom config for the macro
-@cors
-get /foo

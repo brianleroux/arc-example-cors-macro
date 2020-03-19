@@ -1,6 +1,6 @@
 exports.handler = async function http (req) {
   return {
     headers: {'Access-Control-Allow-Origin': '*'},
-    body: JSON.stringify({simple: true})
+    body: JSON.stringify({complex: true})
   }
 }

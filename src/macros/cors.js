@@ -1,44 +1,63 @@
 let toLogicalID = require('@architect/utils/to-logical-id')
 
+/** upgrade entire app with cors */
 module.exports = function cors(arc, template) {
 
   // expects routes ala @http to decorate with cors headers
-  if (arc.cors) {
+  if (arc.http) {
 
     // extract the cloudformation template appname
     let appname = toLogicalID(arc.app[0])
 
     // loop thru the routes
-    arc.cors.forEach(route=> {
-
-      // cheesy check for @http style [verb, path] tuples
-      if (!Array.isArray(route) || Array.isArray(route) && route.length != 2)
-        throw SyntaxError('expected @cors to contain routes (eg. `get /api`')
-
-      let verb = route[0]
-      let path = route[1]
-
-      // add headers to the current method
+    for (let [verb, path] of arc.http) {
+      
       let paths = template.Resources[appname].Properties.DefinitionBody.paths
 
-      paths[path][verb]['x-amazon-apigateway-integration'].responses.default.responseParameters = {
-        'method.response.header.Access-Control-Allow-Headers': "'Content-Type,X-Amz-Date,Authorization,X-Api-Key'",
-        'method.response.header.Access-Control-Allow-Methods': "'*'",
-        'method.response.header.Access-Control-Allow-Origin': "'*'" 
+      // add complex types response headers
+      if (verb === 'put' || verb === 'patch' || verb === 'delete') {
+
+        // add headers
+        paths[unexpress(path)][verb].responses['200'].headers = {
+          'Access-Control-Allow-Methods': {
+            schema: {
+              type: 'string'
+            }
+          },
+          'Access-Control-Allow-Origin': {
+            schema: {
+              type: 'string'
+            }
+          },
+          "Access-Control-Allow-Credentials": {
+            schema: {
+              type: 'string'
+            }
+          },
+          "Access-Control-Allow-Headers": {
+            schema: {
+              type: 'string'
+            }
+          }
+        }
+
+        // add headers values..
+        paths[unexpress(path)][verb]['x-amazon-apigateway-integration'].responses.default.responseParameters = {
+          'method.response.header.Access-Control-Allow-Headers': "'*'",
+          'method.response.header.Access-Control-Allow-Methods': "'*'",
+          'method.response.header.Access-Control-Allow-Origin': "'*'",
+        }
+        paths[unexpress(path)][verb]['x-amazon-apigateway-integration'].responses.default.responseTemplates= {
+          'application/json': ''
+        }
       }
 
-      paths[path][verb].responses['200'].headers = {
-        'Access-Control-Allow-Headers': {type: 'string'},
-        'Access-Control-Allow-Methods': {type: 'string'},
-        'Access-Control-Allow-Origin': {type: 'string'}
-      }
-
-      // add OPTIONS for preflight to the current path
-      paths[path]['options'] = {
+      // add OPTIONS for preflight to every path
+      paths[unexpress(path)]['options'] = {
         responses: {
           '200': {
             headers: {
-              'Access-Control-Allow-Method': {
+              'Access-Control-Allow-Methods': {
                 schema: {
                   type: 'string'
                 }
@@ -62,21 +81,40 @@ module.exports = function cors(arc, template) {
             content: {}
           }
         },
-        "x-amazon-apigateway-integration": {
+        'x-amazon-apigateway-integration': {
+          type: 'mock',
+          requestTemplates: {
+            'application/json': '{"statusCode":200}'
+          },
+          contentHandling: "CONVERT_TO_TEXT",
           responses: {
             default: {
-              statusCode: "200"
+              statusCode: '200',
+              responseParameters: {
+                'method.response.header.Access-Control-Allow-Headers': "'*'",
+                'method.response.header.Access-Control-Allow-Methods': "'*'",
+                'method.response.header.Access-Control-Allow-Origin': "'*'",
+              },
             }
-          },
-          passthroughBehavior: 'when_no_match',
-          requestTemplates: {
-            'application/json': '{"statusCode": 200}'
-          },
-          type: 'mock'
+          }
         }
       }
 
-    })
-  }
+    }//end for
+  }//end if
   return template
+}
+
+function unexpress(completeRoute) {
+  var parts = completeRoute.split('/')
+  var better = parts.map(function unexpressPart(part) {
+    var isParam = part[0] === ':'
+    if (isParam) {
+      return `{${part.replace(':', '')}}`
+    }
+    else {
+      return part
+    }
+  })
+  return `${better.join('/')}`
 }
